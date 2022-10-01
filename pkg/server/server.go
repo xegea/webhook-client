@@ -6,7 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/xegea/webhook_client/pkg/config"
 )
@@ -33,7 +36,7 @@ func (s Server) Start(url string) error {
 		return errors.New("failed to Marshall request")
 	}
 
-	b, err := doRequest(s.Config.ServerUrl+"/token", "POST", bytes.NewBuffer(json_data))
+	b, err := doRequest(s.Config.ServerUrl+"/url", "POST", bytes.NewBuffer(json_data))
 	if err != nil {
 		return err
 	}
@@ -42,10 +45,33 @@ func (s Server) Start(url string) error {
 		Token *string `json:"token"`
 	}{}
 	if err := json.Unmarshal(b, &res); err != nil {
-		return fmt.Errorf("failed to unmarshall: %v", err)
+		return fmt.Errorf("failed to unmarshall 'token': %v", err)
 	}
 
-	fmt.Println(*res.Token)
+	fmt.Println("use the next url path template: ")
+	fmt.Println(strings.Join([]string{s.Config.ServerUrl, *res.Token, "<your_path_here>"}, "/"))
+
+	for {
+		time.Sleep(2 * time.Second)
+
+		b, err := doRequest(s.Config.ServerUrl+"/pop/"+*res.Token, "GET", bytes.NewBuffer(nil))
+		if err != nil {
+			log.Printf("no request to process...")
+			continue
+		}
+		res := struct {
+			Path *string `json:"path"`
+		}{}
+		if err := json.Unmarshal(b, &res); err != nil {
+			log.Printf("failed to unmarshall 'path': %v", err)
+			continue
+		}
+
+		doRequest(url+"/"+*res.Path, "GET", bytes.NewBuffer(json_data))
+
+		// TODO insert response:token into redis
+		break
+	}
 
 	return nil
 }
