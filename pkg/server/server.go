@@ -50,28 +50,69 @@ func (s Server) Start(url string) error {
 
 	fmt.Println("use the next url path template: ")
 	fmt.Println(strings.Join([]string{s.Config.ServerUrl, *res.Token, "<your_path_here>"}, "/"))
+	fmt.Print("waiting for request...")
 
-	for {
-		time.Sleep(2 * time.Second)
+	ch := make(chan bool)
+	go func(ch chan bool, url string) {
+		for {
+			time.Sleep(1 * time.Second)
 
-		b, err := doRequest(s.Config.ServerUrl+"/pop/"+*res.Token, "GET", bytes.NewBuffer(nil))
-		if err != nil {
-			log.Printf("no request to process...")
-			continue
+			b, err := doRequest(s.Config.ServerUrl+"/pop/"+*res.Token, "GET", bytes.NewBuffer(nil))
+			if err != nil {
+				fmt.Print(".")
+				continue
+			}
+			var r Request
+			if err := json.Unmarshal(b, &r); err != nil {
+				log.Printf("failed to unmarshall 'path': %v", err)
+				continue
+			}
+
+			body, ok := r.Body.([]byte)
+			if !ok {
+				body = nil
+			}
+
+			newUrl := strings.Replace(r.Url, "/"+*res.Token, url, 1)
+			fmt.Println()
+			log.Println("Start Processing request...", r.Method, newUrl)
+
+			req, err := http.NewRequest(r.Method, newUrl, bytes.NewBuffer(body))
+			if err != nil {
+				log.Printf("failed to create new request: %v", err)
+				continue
+			}
+
+			var headers map[string]string
+			err = json.Unmarshal([]byte(r.Headers), &headers)
+			if err != nil {
+				log.Printf("failed to unmarshall headers: %v", err)
+			}
+
+			for k, v := range headers {
+				req.Header.Add(k, v)
+			}
+
+			client := &http.Client{}
+			resp, err := client.Do(req)
+			if err != nil {
+				log.Printf("failed to process request: %v", err)
+			}
+
+			// TODO insert response:token into redis
+			b, err = io.ReadAll(resp.Body)
+			if err != nil {
+				continue
+			}
+
+			fmt.Println(string(b))
+
+			resp.Body.Close()
+			ch <- true
 		}
-		res := struct {
-			Path *string `json:"path"`
-		}{}
-		if err := json.Unmarshal(b, &res); err != nil {
-			log.Printf("failed to unmarshall 'path': %v", err)
-			continue
-		}
-
-		doRequest(url+"/"+*res.Path, "GET", bytes.NewBuffer(json_data))
-
-		// TODO insert response:token into redis
-		break
-	}
+	}(ch, url)
+	ended := <-ch
+	_ = ended
 
 	return nil
 }
