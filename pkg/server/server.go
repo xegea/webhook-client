@@ -25,6 +25,14 @@ func NewServer(cfg config.Config) Server {
 	return svr
 }
 
+type Request struct {
+	Url     string          `json:"url,omitempty"`
+	Host    string          `json:"host,omitempty"`
+	Method  string          `json:"method,omitempty"`
+	Body    any             `json:"body,omitempty"`
+	Headers json.RawMessage `json:"headers,omitempty"`
+}
+
 func (s Server) Start(url string) error {
 
 	req := struct {
@@ -48,8 +56,10 @@ func (s Server) Start(url string) error {
 		return fmt.Errorf("failed to unmarshall 'token': %v", err)
 	}
 
-	fmt.Println("use the next url path template: ")
-	fmt.Println(strings.Join([]string{s.Config.ServerUrl, *res.Token, "<your_path_here>"}, "/"))
+	fmt.Println("Congratulations!!!")
+	fmt.Printf("You have access to: %s\n", url+"/<your_path>")
+	fmt.Printf("using the next url: %s\n\n\n", strings.Join([]string{s.Config.ServerUrl, *res.Token, "<your_path>"}, "/"))
+
 	fmt.Print("waiting for request...")
 
 	ch := make(chan bool)
@@ -97,18 +107,27 @@ func (s Server) Start(url string) error {
 			resp, err := client.Do(req)
 			if err != nil {
 				log.Printf("failed to process request: %v", err)
-			}
-
-			// TODO insert response:token into redis
-			b, err = io.ReadAll(resp.Body)
-			if err != nil {
 				continue
 			}
 
-			fmt.Println(string(b))
+			b, err = io.ReadAll(resp.Body)
+			if err != nil {
+				log.Printf("failed to read response Body: %v", err)
+				continue
+			}
+
+			_, err = doRequest(s.Config.ServerUrl+"/resp/"+*res.Token, "POST", bytes.NewBuffer(b))
+			if err != nil {
+				log.Printf("failed to save response Body: %v", err)
+				continue
+			}
+			//fmt.Println(string(b))
 
 			resp.Body.Close()
-			ch <- true
+
+			fmt.Println()
+			fmt.Print("waiting for new request...")
+			//ch <- true
 		}
 	}(ch, url)
 	ended := <-ch
