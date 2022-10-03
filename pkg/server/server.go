@@ -41,7 +41,7 @@ func (s Server) Start(url string) error {
 	req.Url = url
 	json_data, err := json.Marshal(req)
 	if err != nil {
-		return errors.New("failed to Marshall request")
+		return errors.New("failed to marshal request")
 	}
 
 	b, err := doRequest(s.Config.ServerUrl+"/url", "POST", bytes.NewBuffer(json_data))
@@ -53,7 +53,7 @@ func (s Server) Start(url string) error {
 		Token *string `json:"token"`
 	}{}
 	if err := json.Unmarshal(b, &res); err != nil {
-		return fmt.Errorf("failed to unmarshall 'token': %v", err)
+		return fmt.Errorf("failed to unmarshal 'token': %v", err)
 	}
 
 	fmt.Println("Congratulations!!!")
@@ -74,7 +74,7 @@ func (s Server) Start(url string) error {
 			}
 			var r Request
 			if err := json.Unmarshal(b, &r); err != nil {
-				log.Printf("failed to unmarshall 'path': %v", err)
+				log.Printf("failed to unmarshal 'path': %v", err)
 				continue
 			}
 
@@ -96,7 +96,7 @@ func (s Server) Start(url string) error {
 			var headers map[string]string
 			err = json.Unmarshal([]byte(r.Headers), &headers)
 			if err != nil {
-				log.Printf("failed to unmarshall headers: %v", err)
+				log.Printf("failed to unmarshal headers: %v", err)
 			}
 
 			for k, v := range headers {
@@ -113,6 +113,20 @@ func (s Server) Start(url string) error {
 			b, err = io.ReadAll(resp.Body)
 			if err != nil {
 				log.Printf("failed to read response Body: %v", err)
+				continue
+			}
+
+			response := struct {
+				Body    []byte              `json:"body"`
+				Headers map[string][]string `json:"headers"`
+			}{}
+
+			response.Body = b
+			response.Headers = resp.Header
+
+			b, err = json.Marshal(response)
+			if err != nil {
+				log.Printf("failed to marshal response: %v", err)
 				continue
 			}
 
