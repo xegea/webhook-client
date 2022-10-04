@@ -26,6 +26,7 @@ func NewServer(cfg config.Config) Server {
 }
 
 type Request struct {
+	Id      string          `json:"id,omitempty"`
 	Url     string          `json:"url,omitempty"`
 	Host    string          `json:"host,omitempty"`
 	Method  string          `json:"method,omitempty"`
@@ -65,82 +66,83 @@ func (s Server) Start(url string) error {
 	ch := make(chan bool)
 	go func(ch chan bool, url string) {
 		for {
-			time.Sleep(1 * time.Second)
+			time.Sleep(100 * time.Millisecond)
 
 			b, err := doRequest(s.Config.ServerUrl+"/pop/"+*res.Token, "GET", bytes.NewBuffer(nil))
 			if err != nil {
 				fmt.Print(".")
 				continue
 			}
-			var r Request
-			if err := json.Unmarshal(b, &r); err != nil {
+			var rs []Request
+			if err := json.Unmarshal(b, &rs); err != nil {
 				log.Printf("failed to unmarshal 'path': %v", err)
 				continue
 			}
 
-			body, ok := r.Body.([]byte)
-			if !ok {
-				body = nil
+			for _, r := range rs {
+
+				body, ok := r.Body.([]byte)
+				if !ok {
+					body = nil
+				}
+
+				newUrl := strings.Replace(r.Url, "/"+*res.Token, url, 1)
+				fmt.Println()
+				log.Println("Start Processing request...", r.Method, newUrl)
+
+				req, err := http.NewRequest(r.Method, newUrl, bytes.NewBuffer(body))
+				if err != nil {
+					log.Printf("failed to create new request: %v", err)
+					continue
+				}
+
+				var headers map[string]string
+				err = json.Unmarshal([]byte(r.Headers), &headers)
+				if err != nil {
+					log.Printf("failed to unmarshal headers: %v", err)
+				}
+
+				for k, v := range headers {
+					req.Header.Add(k, v)
+				}
+
+				client := &http.Client{}
+				resp, err := client.Do(req)
+				if err != nil {
+					log.Printf("failed to process request: %v", err)
+					continue
+				}
+
+				b, err = io.ReadAll(resp.Body)
+				if err != nil {
+					log.Printf("failed to read response Body: %v", err)
+					continue
+				}
+
+				response := struct {
+					Body    []byte              `json:"body"`
+					Headers map[string][]string `json:"headers"`
+				}{}
+
+				response.Body = b
+				response.Headers = resp.Header
+
+				b, err = json.Marshal(response)
+				if err != nil {
+					log.Printf("failed to marshal response: %v", err)
+					continue
+				}
+
+				_, err = doRequest(s.Config.ServerUrl+"/resp/"+*res.Token+"~"+r.Id, "POST", bytes.NewBuffer(b))
+				if err != nil {
+					log.Printf("failed to save response Body: %v", err)
+					continue
+				}
+				//fmt.Println(string(b))
+
+				resp.Body.Close()
 			}
 
-			newUrl := strings.Replace(r.Url, "/"+*res.Token, url, 1)
-			fmt.Println()
-			log.Println("Start Processing request...", r.Method, newUrl)
-
-			req, err := http.NewRequest(r.Method, newUrl, bytes.NewBuffer(body))
-			if err != nil {
-				log.Printf("failed to create new request: %v", err)
-				continue
-			}
-
-			var headers map[string]string
-			err = json.Unmarshal([]byte(r.Headers), &headers)
-			if err != nil {
-				log.Printf("failed to unmarshal headers: %v", err)
-			}
-
-			for k, v := range headers {
-				req.Header.Add(k, v)
-			}
-
-			client := &http.Client{}
-			resp, err := client.Do(req)
-			if err != nil {
-				log.Printf("failed to process request: %v", err)
-				continue
-			}
-
-			b, err = io.ReadAll(resp.Body)
-			if err != nil {
-				log.Printf("failed to read response Body: %v", err)
-				continue
-			}
-
-			response := struct {
-				Body    []byte              `json:"body"`
-				Headers map[string][]string `json:"headers"`
-			}{}
-
-			response.Body = b
-			response.Headers = resp.Header
-
-			b, err = json.Marshal(response)
-			if err != nil {
-				log.Printf("failed to marshal response: %v", err)
-				continue
-			}
-
-			_, err = doRequest(s.Config.ServerUrl+"/resp/"+*res.Token, "POST", bytes.NewBuffer(b))
-			if err != nil {
-				log.Printf("failed to save response Body: %v", err)
-				continue
-			}
-			//fmt.Println(string(b))
-
-			resp.Body.Close()
-
-			fmt.Println()
-			fmt.Print("waiting for new request...")
 			//ch <- true
 		}
 	}(ch, url)
