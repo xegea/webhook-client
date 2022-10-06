@@ -4,7 +4,7 @@ Rudimentary <a href="https://ngrok.com">ngrok</a> to put your localhost on the I
 
 Example:
 
-<code>$ webhook -url=http://localhost:8080</code>
+<code>$ webhook-client -url=http://localhost:8080</code>
 
 <code>Congratulations!!!</code>                                                                     
 
