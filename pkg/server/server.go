@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -45,7 +46,7 @@ func (s Server) Start(url string) error {
 		return errors.New("failed to marshal request")
 	}
 
-	b, err := doRequest(s.Config.ServerUrl+"/url", "POST", bytes.NewBuffer(json_data))
+	b, err := requestServerWithContext(s.Config.ServerUrl+"/url", "POST", bytes.NewBuffer(json_data))
 	if err != nil {
 		return err
 	}
@@ -61,14 +62,14 @@ func (s Server) Start(url string) error {
 	fmt.Printf("You have access to: %s\n", url+"/<your_path>")
 	fmt.Printf("using the next url: %s\n\n\n", strings.Join([]string{s.Config.ServerUrl, *res.Token, "<your_path>"}, "/"))
 
-	fmt.Print("waiting for request...")
+	fmt.Print("waiting for requests...")
 
 	ch := make(chan bool)
 	go func(ch chan bool, url string) {
 		for {
 			time.Sleep(100 * time.Millisecond)
 
-			b, err := doRequest(s.Config.ServerUrl+"/pop/"+*res.Token, "GET", bytes.NewBuffer(nil))
+			b, err := requestServerWithContext(s.Config.ServerUrl+"/pop/"+*res.Token, "GET", bytes.NewBuffer(nil))
 			if err != nil {
 				fmt.Print(".")
 				continue
@@ -133,7 +134,7 @@ func (s Server) Start(url string) error {
 					continue
 				}
 
-				_, err = doRequest(s.Config.ServerUrl+"/resp/"+*res.Token+"~"+r.Id, "POST", bytes.NewBuffer(b))
+				_, err = requestServerWithContext(s.Config.ServerUrl+"/resp/"+*res.Token+"~"+r.Id, "POST", bytes.NewBuffer(b))
 				if err != nil {
 					log.Printf("failed to save response Body: %v", err)
 					continue
@@ -152,11 +153,12 @@ func (s Server) Start(url string) error {
 	return nil
 }
 
-func doRequest(url, method string, body *bytes.Buffer) ([]byte, error) {
-
-	req, err := http.NewRequest(method, url, body)
+func requestServerWithContext(url, method string, body *bytes.Buffer) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, method, url, body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("requestServerWithContext: failed creating request: %w", err)
 	}
 
 	req.Header = http.Header{
@@ -164,20 +166,19 @@ func doRequest(url, method string, body *bytes.Buffer) ([]byte, error) {
 		"Accept":       []string{"application/vnd.api+json"},
 	}
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("requestServerWithContext: failed executing request %w", err)
 	}
-	defer resp.Body.Close()
+	defer res.Body.Close()
 
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return nil, errors.New(resp.Status)
+	if res.StatusCode < 200 || res.StatusCode > 299 {
+		return nil, errors.New(res.Status)
 	}
 
-	b, err := io.ReadAll(resp.Body)
+	b, err := io.ReadAll(res.Body)
 	if err != nil {
-		return nil, fmt.Errorf("unable to read the response: %w", err)
+		return nil, fmt.Errorf("requestServerWithContext: failed reading response %w", err)
 	}
 
 	return b, nil
