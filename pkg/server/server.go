@@ -58,7 +58,7 @@ func (s Server) Start(url string) error {
 		return fmt.Errorf("failed to unmarshal 'token': %v", err)
 	}
 
-	fmt.Println("Congratulations!!!")
+	fmt.Println("Congrats!")
 	fmt.Printf("You have access to: %s\n", url+"/<your_path>")
 	fmt.Printf("using the next url: %s\n\n\n", strings.Join([]string{s.Config.ServerUrl, *res.Token, "<your_path>"}, "/"))
 
