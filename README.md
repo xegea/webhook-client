@@ -1,6 +1,6 @@
 # webhook_client
 
-Rudimentary <a href="https://ngrok.com">ngrok</a> to put your localhost on the Internet
+Rudimentary <a href="https://ngrok.com">ngrok</a> to put your localhost on the Internet.
 
 Example:
 
