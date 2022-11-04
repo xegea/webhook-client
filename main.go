@@ -10,7 +10,7 @@ import (
 
 func main() {
 	env := flag.String("env", ".env", ".env path")
-	url := flag.String("url", "http:/localhost:8080", "url to connect. ie. http:/localhost:8080")
+	url := flag.String("url", "http://localhost:8080", "url to connect. ie. http:/localhost:8080")
 	flag.Parse()
 
 	cfg, err := config.LoadConfig(env)
